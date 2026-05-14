@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生态食物链交互演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans SC', sans-serif; }
+        
+        /* 自定义动画 */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.8); }
+        }
+        @keyframes flow-dash {
+            to { stroke-dashoffset: -20; }
+        }
+        @keyframes eat-effect {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        
+        .organism-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .organism-card:hover {
+            transform: translateY(-5px) scale(1.05);
+        }
+        .organism-card.selected {
+            ring: 3px solid #3b82f6;
+            transform: scale(1.1);
+        }
+        .organism-card.dead {
+            opacity: 0.4;
+            filter: grayscale(100%);
+        }
+        
+        .energy-flow {
+            stroke-dasharray: 5, 5;
+            animation: flow-dash 1s linear infinite;
+        }
+        
+        .ecosystem-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+        
+        /* 拖拽时的样式 */
+        .dragging {
+            opacity: 0.8;
+            cursor: grabbing !important;
+        }
+        .drop-target {
+            animation: pulse-glow 1.5s ease-in-out infinite;
+        }
+        
+        /* 粒子效果 */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            animation: particle-fade 1s ease-out forwards;
+        }
+        @keyframes particle-fade {
+            0% { opacity: 1; transform: translate(0, 0) scale(1); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0); }
+        }
+        
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="ecosystem-bg text-white min-h-screen overflow-x-hidden">
+
+    <!-- 顶部导航 -->
+    <nav class="bg-slate-800/80 backdrop-blur-md border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-xl">🌿</div>
+                <div>
+                    <h1 class="text-xl font-bold text-green-400">生态食物链实验室</h1>
+                    <p class="text-xs text-slate-400">交互式生态系统模拟器</p>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="app.resetEcosystem()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors flex items-center gap-2">
+                    <span>🔄</span> 重置生态
+                </button>
+                <button onclick="app.toggleSimulation()" id="simBtn" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm transition-colors flex items-center gap-2">
+                    <span>▶️</span> <span id="simText">开始模拟</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左侧：生物库 -->
+        <div class="lg:col-span-3 space-y-4">
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <span>🧬</span> 生物库
+                    <span class="text-xs font-normal text-slate-400 ml-auto">拖拽到右侧</span>
+                </h2>
+                
+                <!-- 生产者 -->
+                <div class="mb-4">
+                    <h3 class="text-xs font-bold text-green-400 uppercase tracking-wider mb-2">生产者 (Producer)</h3>
+                    <div class="space-y-2" id="producers">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 初级消费者 -->
+                <div class="mb-4">
+                    <h3 class="text-xs font-bold text-yellow-400 uppercase tracking-wider mb-2">初级消费者 (Primary)</h3>
+                    <div class="space-y-2" id="primaryConsumers">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 次级消费者 -->
+                <div class="mb-4">
+                    <h3 class="text-xs font-bold text-orange-400 uppercase tracking-wider mb-2">次级消费者 (Secondary)</h3>
+                    <div class="space-y-2" id="secondaryConsumers">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 分解者 -->
+                <div>
+                    <h3 class="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">分解者 (Decomposer)</h3>
+                    <div class="space-y-2" id="decomposers">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 能量金字塔 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                <h2 class="text-lg font-semibold mb-3">能量金字塔</h2>
+                <div id="energyPyramid" class="flex flex-col items-center gap-1">
+                    <!-- 动态生成金字塔 -->
+                </div>
+                <div class="mt-3 text-xs text-slate-400 text-center">
+                    能量传递效率约 10-20%
+                </div>
+            </div>
+        </div>
+
+        <!-- 中间：生态系统画布 -->
+        <div class="lg:col-span-6">
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4 h-full min-h-[600px] relative overflow-hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">生态系统画布</h2>
+                    <div class="flex gap-2 text-xs">
+                        <span class="px-2 py-1 bg-slate-700 rounded">生物数: <span id="organismCount" class="text-green-400">0</span></span>
+                        <span class="px-2 py-1 bg-slate-700 rounded">时间: <span id="simTime" class="text-blue-400">0</span>s</span>
+                    </div>
+                </div>
+                
+                <!-- 画布区域 -->
+                <div id="ecosystemCanvas" class="relative w-full h-[500px] bg-gradient-to-b from-sky-900/30 via-slate-800/50 to-emerald-900/30 rounded-lg border-2 border-dashed border-slate-600 overflow-hidden">
+                    <div class="absolute inset-0 flex items-center justify-center text-slate-500 pointer-events-none" id="emptyState">
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">🌍</div>
+                            <p>拖拽生物到此处构建食物链</p>
+                            <p class="text-sm mt-1">点击生物查看详情，拖拽生物进行捕食</p>
+                        </div>
+                    </div>
+                    <!-- 生物将在这里动态生成 -->
+                </div>
+
+                <!-- 底部提示 -->
+                <div class="mt-4 flex justify-between text-sm text-slate-400">
+                    <div class="flex items-center gap-4">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> 生产者</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-yellow-500"></span> 消费者</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500"></span> 顶级掠食者</span>
+                    </div>
+                    <div id="interactionHint" class="text-slate-500">提示：拖拽生物进行捕食关系建立</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：信息与控制 -->
+        <div class="lg:col-span-3 space-y-4">
+            <!-- 选中生物详情 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4" id="detailPanel">
+                <h2 class="text-lg font-semibold mb-3">生物详情</h2>
+                <div id="organismDetail" class="text-center text-slate-400 py-8">
+                    <div class="text-3xl mb-2">👆</div>
+                    <p>点击画布中的生物查看详情</p>
+                </div>
+            </div>
+
+            <!-- 食物链分析 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                <h2 class="text-lg font-semibold mb-3">食物链分析</h2>
+                <div id="foodChainAnalysis" class="space-y-2 text-sm">
+                    <div class="text-slate-400 text-center py-4">
+                        添加生物后将自动分析食物链
+                    </div>
+                </div>
+            </div>
+
+            <!-- 环境参数 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                <h2 class="text-lg font-semibold mb-3">环境参数</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400 flex justify-between">
+                            <span>光照强度</span>
+                            <span id="lightValue">100%</span>
+                        </label>
+                        <input type="range" min="0" max="100" value="100" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-500" oninput="app.updateEnvironment('light', this.value)">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 flex justify-between">
+                            <span>温度</span>
+                            <span id="tempValue">25°C</span>
+                        </label>
+                        <input type="range" min="0" max="50" value="25" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500" oninput="app.updateEnvironment('temp', this.value)">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 flex justify-between">
+                            <span>水分</span>
+                            <span id="waterValue">80%</span>
+                        </label>
+                        <input type="range" min="0" max="100" value="80" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500" oninput="app.updateEnvironment('water', this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 统计图表 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                <h2 class="text-lg font-semibold mb-3">种群数量变化</h2>
+                <canvas id="populationChart" width="300" height="150" class="w-full"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：捕食动画 -->
+    <div id="predationModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-slate-800 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-600 transform scale-95 opacity-0 transition-all duration-300" id="predationContent">
+            <div class="text-center">
+                <div class="flex justify-center items-center gap-4 mb-6 text-6xl">
+                    <span id="predatorEmoji">🦁</span>
+                    <span class="text-red-500 animate-pulse">⚡</span>
+                    <span id="preyEmoji">🦌</span>
+                </div>
+                <h3 class="text-2xl font-bold mb-2 text-red-400">捕食成功！</h3>
+                <p class="text-slate-300 mb-4" id="predationDesc">狮子捕食了鹿，获得了能量</p>
+                <div class="bg-slate-700/50 rounded-lg p-4 mb-4 text-left text-sm">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-slate-400">能量传递:</span>
+                        <span class="text-green-400" id="energyTransfer">+45 能量</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">效率:</span>
+                        <span class="text-yellow-400">10%</span>
+                    </div>
+                </div>
+                <button onclick="app.closePredationModal()" class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold transition-colors">
+                    继续观察
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 生物数据库
+        const ORGANISM_DB = {
+            producers: [
+                { id: 'grass', name: '草', emoji: '🌿', energy: 100, type: 'producer', desc: '通过光合作用制造有机物' },
+                { id: 'tree', name: '树', emoji: '🌳', energy: 200, type: 'producer', desc: '高大的木本植物，提供大量能量' },
+                { id: 'algae', name: '藻类', emoji: '🦠', energy: 50, type: 'producer', desc: '水生生态系统的主要生产者' },
+                { id: 'flower', name: '花', emoji: '🌸', energy: 80, type: 'producer', desc: '吸引传粉者，繁殖后代' }
+            ],
+            primary: [
+                { id: 'rabbit', name: '兔子', emoji: '🐰', energy: 150, type: 'primary', prey: ['grass', 'flower'], desc: '草食性动物，繁殖能力强' },
+                { id: 'deer', name: '鹿', emoji: '🦌', energy: 300, type: 'primary', prey: ['grass', 'tree'], desc: '森林中的大型草食动物' },
+                { id: 'cow', name: '牛', emoji: '🐄', energy: 400, type: 'primary', prey: ['grass'], desc: '反刍动物，消化纤维素' },
+                { id: 'sheep', name: '羊', emoji: '🐑', energy: 200, type: 'primary', prey: ['grass'], desc: '群居草食动物' }
+            ],
+            secondary: [
+                { id: 'fox', name: '狐狸', emoji: '🦊', energy: 250, type: 'secondary', prey: ['rabbit'], desc: '机智的捕食者，适应性强' },
+                { id: 'snake', name: '蛇', emoji: '🐍', energy: 200, type: 'secondary', prey: ['rabbit', 'mouse'], desc: '冷血爬行动物，伏击猎手' },
+                { id: 'eagle', name: '鹰', emoji: '🦅', energy: 350, type: 'secondary', prey: ['rabbit', 'snake', 'fish'], desc: '天空中的顶级掠食者' },
+                { id: 'lion', name: '狮子', emoji: '🦁', energy: 500, type: 'secondary', prey: ['deer', 'cow', 'sheep'], desc: '草原之王，群居猎手' },
+                { id: 'shark', name: '鲨鱼', emoji: '🦈', energy: 600, type: 'secondary', prey: ['fish'], desc: '海洋中的顶级掠食者' }
+            ],
+            decomposers: [
+                { id: 'mushroom', name: '蘑菇', emoji: '🍄', energy: 30, type: 'decomposer', desc: '分解有机物，回归土壤' },
+                { id: 'bacteria', name: '细菌', emoji: '🦠', energy: 10, type: 'decomposer', desc: '微生物分解者，无处不在' }
+            ]
+        };
+
+        class EcosystemApp {
+            constructor() {
+                this.organisms = [];
+                this.selectedOrganism = null;
+                this.isSimulating = false;
+                this.simulationInterval = null;
+                this.simTime = 0;
+                this.environment = { light: 100, temp: 25, water: 80 };
+                this.populationHistory = [];
+                this.draggedItem = null;
+                this.canvas = document.getElementById('ecosystemCanvas');
+                
+                this.init();
+            }
+
+            init() {
+                this.renderOrganismLibrary();
+                this.setupDragAndDrop();
+                this.setupCanvasEvents();
+                this.updateEnergyPyramid();
+                this.renderChart();
+            }
+
+            // 渲染生物库
+            renderOrganismLibrary() {
+                const renderGroup = (group, containerId) => {
+                    const container = document.getElementById(containerId);
+                    container.innerHTML = group.map(org => `
+                        <div class="organism-card bg-slate-700/50 p-3 rounded-lg cursor-move border border-slate-600 hover:border-green-500/50 flex items-center gap-3" 
+                             draggable="true" 
+                             data-organism='${JSON.stringify(org)}'>
+                            <span class="text-2xl">${org.emoji}</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-sm truncate">${org.name}</div>
+                                <div class="text-xs text-slate-400">能量: ${org.energy}</div>
+                            </div>
+                        </div>
+                    `).join('');
+                };
+
+                renderGroup(ORGANISM_DB.producers, 'producers');
+                renderGroup(ORGANISM_DB.primary, 'primaryConsumers');
+                renderGroup(ORGANISM_DB.secondary, 'secondaryConsumers');
+                renderGroup(ORGANISM_DB.decomposers, 'decomposers');
+
+                // 添加拖拽事件
+                document.querySelectorAll('.organism-card').forEach(card => {
+                    card.addEventListener('dragstart', (e) => {
+                        this.draggedItem = JSON.parse(e.target.dataset.organism);
+                        e.target.classList.add('dragging');
+                        e.dataTransfer.effectAllowed = 'copy';
+                    });
+                    card.addEventListener('dragend', (e) => {
+                        e.target.classList.remove('dragging');
+                    });
+                });
+            }
+
+            // 设置拖放
+            setupDragAndDrop() {
+                this.canvas.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    this.canvas.classList.add('border-green-500', 'bg-slate-700/30');
+                });
+
+                this.canvas.addEventListener('dragleave', () => {
+                    this.canvas.classList.remove('border-green-500', 'bg-slate-700/30');
+                });
+
+                this.canvas.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.canvas.classList.remove('border-green-500', 'bg-slate-700/30');
+                    
+                    if (!this.draggedItem) return;
+                    
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    this.addOrganism(this.draggedItem, x, y);
+                    this.draggedItem = null;
+                });
+            }
+
+            // 添加生物到画布
+            addOrganism(template, x, y) {
+                const organism = {
+                    ...template,
+                    uid: Date.now() + Math.random(),
+                    x: x - 30,
+                    y: y - 30,
+                    currentEnergy: template.energy,
+                    alive: true,
+                    age: 0,
+                    scale: 1
+                };
+
+                this.organisms.push(organism);
+                this.renderOrganism(organism);
+                this.updateUI();
+                this.checkEmptyState();
+                this.analyzeFoodChain();
+                this.updateEnergyPyramid();
+            }
+
+            // 渲染单个生物
+            renderOrganism(org) {
+                const el = document.createElement('div');
+                el.className = `absolute w-[60px] h-[60px] flex items-center justify-center text-4xl cursor-pointer select-none transition-all duration-300 hover:scale-110`;
+                el.style.left = org.x + 'px';
+                el.style.top = org.y + 'px';
+                el.id = `org-${org.uid}`;
+                el.innerHTML = `
+                    <div class="relative">
+                        ${org.emoji}
+                        <div class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-slate-700 rounded-full overflow-hidden">
+                            <div class="h-full bg-green-500 transition-all duration-500" style="width: ${(org.currentEnergy/org.energy)*100}%"></div>
+                        </div>
+                        ${org.type === 'producer' ? '<div class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>' : ''}
+                    </div>
+                `;
+                
+                // 点击事件
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectOrganism(org);
+                });
+
+                // 拖拽移动（画布内）
+                let isDragging = false;
+                let startX, startY, initialX, initialY;
+
+                el.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialX = org.x;
+                    initialY = org.y;
+                    el.style.cursor = 'grabbing';
+                    el.style.zIndex = 1000;
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    org.x = Math.max(0, Math.min(this.canvas.offsetWidth - 60, initialX + dx));
+                    org.y = Math.max(0, Math.min(this.canvas.offsetHeight - 60, initialY + dy));
+                    el.style.left = org.x + 'px';
+                    el.style.top = org.y + 'px';
+                });
+
+                document.addEventListener('mouseup', (e) => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    el.style.cursor = 'pointer';
+                    el.style.zIndex = '';
+                    
+                    // 检查是否拖拽到其他生物上（捕食）
+                    this.checkPredation(org, e.clientX, e.clientY);
+                });
+
+                this.canvas.appendChild(el);
+                
+                // 入场动画
+                el.animate([
+                    { transform: 'scale(0) rotate(180deg)', opacity: 0 },
+                    { transform: 'scale(1.2) rotate(-10deg)', opacity: 1 },
+                    { transform: 'scale(1) rotate(0deg)' }
+                ], { duration: 500, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+            }
+
+            // 检查捕食
+            checkPredation(predator, mouseX, mouseY) {
+                const prey = this.organisms.find(org => {
+                    if (org.uid === predator.uid || !org.alive) return false;
+                    const rect = document.getElementById(`org-${org.uid}`).getBoundingClientRect();
+                    return mouseX >= rect.left && mouseX <= rect.right && 
+                           mouseY >= rect.top && mouseY <= rect.bottom;
+                });
+
+                if (prey && predator.prey && predator.prey.includes(prey.id)) {
+                    this.performPredation(predator, prey);
+                }
+            }
+
+            // 执行捕食
+            performPredation(predator, prey) {
+                const energyGain = Math.floor(prey.currentEnergy * 0.1);
+                predator.currentEnergy = Math.min(predator.energy, predator.currentEnergy + energyGain);
+                prey.alive = false;
+                prey.currentEnergy = 0;
+
+                // 显示模态框
+                document.getElementById('predatorEmoji').textContent = predator.emoji;
+                document.getElementById('preyEmoji').textContent = prey.emoji;
+                document.getElementById('energyTransfer').textContent = `+${energyGain} 能量`;
+                document.getElementById('predationDesc').textContent = `${predator.name}捕食了${prey.name}，获得了能量`;
+                
+                const modal = document.getElementById('predationModal');
+                const content = document.getElementById('predationContent');
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                // 更新UI
+                this.updateOrganismUI(prey);
+                this.updateOrganismUI(predator);
+                this.createParticles(prey.x + 30, prey.y + 30, '💥');
+                this.analyzeFoodChain();
+                this.updateEnergyPyramid();
+            }
+
+            closePredationModal() {
+                const modal = document.getElementById('predationModal');
+                const content = document.getElementById('predationContent');
+                content.classList.remove('scale-100', 'opacity-100');
+                content.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+
+            // 创建粒子效果
+            createParticles(x, y, emoji) {
+                for (let i = 0; i < 8; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'particle text-2xl';
+                    particle.textContent = emoji;
+                    particle.style.left = x + 'px';
+                    particle.style.top = y + 'px';
+                    const angle = (Math.PI * 2 * i) / 8;
+                    const distance = 50 + Math.random() * 50;
+                    particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+                    particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+                    this.canvas.appendChild(particle);
+                    setTimeout(() => particle.remove(), 1000);
+                }
+            }
+
+            // 选择生物
+            selectOrganism(org) {
+                this.selectedOrganism = org;
+                
+                // 更新选中状态
+                document.querySelectorAll('[id^="org-"]').forEach(el => el.classList.remove('ring-4', 'ring-blue-500', 'rounded-full'));
+                const el = document.getElementById(`org-${org.uid}`);
+                if (el) el.classList.add('ring-4', 'ring-blue-500', 'rounded-full');
+
+                // 更新详情面板
+                const detailPanel = document.getElementById('organismDetail');
+                detailPanel.innerHTML = `
+                    <div class="text-center">
+                        <div class="text-6xl mb-3 animate-bounce">${org.emoji}</div>
+                        <h3 class="text-xl font-bold text-white mb-1">${org.name}</h3>
+                        <span class="inline-block px-3 py-1 rounded-full text-xs font-bold mb-3 ${
+                            org.type === 'producer' ? 'bg-green-500/20 text-green-400' :
+                            org.type === 'primary' ? 'bg-yellow-500/20 text-yellow-400' :
+                            org.type === 'secondary' ? 'bg-red-500/20 text-red-400' :
+                            'bg-purple-500/20 text-purple-400'
+                        }">${this.getTypeLabel(org.type)}</span>
+                        <p class="text-slate-300 text-sm mb-4">${org.desc}</p>
+                        
+                        <div class="space-y-2 text-left bg-slate-700/30 rounded-lg p-3">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">当前能量:</span>
+                                <span class="text-green-400">${org.currentEnergy}/${org.energy}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">存活状态:</span>
+                                <span class="${org.alive ? 'text-green-400' : 'text-red-400'}">${org.alive ? '存活' : '死亡'}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">存活时间:</span>
+                                <span class="text-blue-400">${org.age}秒</span>
+                            </div>
+                            ${org.prey ? `
+                            <div class="flex justify-between text-sm">
+                                <span class="text-slate-400">捕食对象:</span>
+                                <span class="text-yellow-400">${org.prey.map(p => {
+                                    const prey = Object.values(ORGANISM_DB).flat().find(o => o.id === p);
+                                    return prey ? prey.emoji : p;
+                                }).join(' ')}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        ${!org.alive ? `
+                        <button onclick="app.removeOrganism('${org.uid}')" class="mt-3 w-full py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-sm transition-colors border border-red-600/30">
+                            移除遗体
+                        </button>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            getTypeLabel(type) {
+                const labels = {
+                    producer: '生产者',
+                    primary: '初级消费者',
+                    secondary: '次级消费者',
+                    decomposer: '分解者'
+                };
+                return labels[type] || type;
+            }
+
+            // 移除生物
+            removeOrganism(uid) {
+                this.organisms = this.organisms.filter(o => o.uid !== uid);
+                const el = document.getElementById(`org-${uid}`);
+                if (el) {
+                    el.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0)' }], 
+                    { duration: 300 }).onfinish = () => el.remove();
+                }
+                this.updateUI();
+                this.checkEmptyState();
+                this.analyzeFoodChain();
+                this.updateEnergyPyramid();
+                document.getElementById('organismDetail').innerHTML = `
+                    <div class="text-center text-slate-400 py-8">
+                        <div class="text-3xl mb-2">👆</div>
+                        <p>点击画布中的生物查看详情</p>
+                    </div>
+                `;
+            }
+
+            // 分析食物链
+            analyzeFoodChain() {
+                const alive = this.organisms.filter(o => o.alive);
+                const producers = alive.filter(o => o.type === 'producer');
+                const primary = alive.filter(o => o.type === 'primary');
+                const secondary = alive.filter(o => o.type === 'secondary');
+                const decomposers = alive.filter(o => o.type === 'decomposer');
+
+                const container = document.getElementById('foodChainAnalysis');
+                
+                if (alive.length === 0) {
+                    container.innerHTML = '<div class="text-slate-400 text-center py-4">添加生物后将自动分析食物链</div>';
+                    return;
+                }
+
+                // 构建食物链文本
+                let chains = [];
+                if (producers.length > 0 && primary.length > 0) {
+                    chains.push(`🌿 → ${primary.map(p => p.emoji).join('/')}`);
+                }
+                if (primary.length > 0 && secondary.length > 0) {
+                    chains.push(`${primary.map(p => p.emoji).join('/')} → ${secondary.map(p => p.emoji).join('/')}`);
+                }
+                if (decomposers.length > 0) {
+                    chains.push(`... → 🍄 (分解)`);
+                }
+
+                container.innerHTML = `
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-2 text-center">
+                            <div class="bg-green-500/10 rounded-lg p-2 border border-green-500/20">
+                                <div class="text-2xl mb-1">🌿</div>
+                                <div class="text-xs text-green-400">生产者</div>
+                                <div class="text-lg font-bold">${producers.length}</div>
+                            </div>
+                            <div class="bg-yellow-500/10 rounded-lg p-2 border border-yellow-500/20">
+                                <div class="text-2xl mb-1">🐰</div>
+                                <div class="text-xs text-yellow-400">初级消费者</div>
+                                <div class="text-lg font-bold">${primary.length}</div>
+                            </div>
+                            <div class="bg-orange-500/10 rounded-lg p-2 border border-orange-500/20">
+                                <div class="text-2xl mb-1">🦊</div>
+                                <div class="text-xs text-orange-400">次级消费者</div>
+                                <div class="text-lg font-bold">${secondary.length}</div>
+                            </div>
+                            <div class="bg-purple-500/10 rounded-lg p-2 border border-purple-500/20">
+                                <div class="text-2xl mb-1">🍄</div>
+                                <div class="text-xs text-purple-400">分解者</div>
+                                <div class="text-lg font-bold">${decomposers.length}</div>
+                            </div>
+                        </div>
+                        
+                        ${chains.length > 0 ? `
+                        <div class="bg-slate-700/30 rounded-lg p-3">
+                            <div class="text-xs text-slate-400 mb-2">检测到的食物链:</div>
+                            ${chains.map(chain => `
+                                <div class="text-sm font-mono bg-slate-800/50 rounded px-2 py-1 mb-1">${chain}</div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
+                        
+                        <div class="text-xs text-slate-500">
+                            ${producers.length === 0 ? '⚠️ 缺少生产者，生态系统无法维持' : ''}
+                            ${secondary.length > 0 && primary.length === 0 ? '⚠️ 缺少初级消费者，次级消费者将饿死' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 更新能量金字塔
+            updateEnergyPyramid() {
+                const alive = this.organisms.filter(o => o.alive);
+                const levels = {
+                    producer: alive.filter(o => o.type === 'producer').reduce((sum, o) => sum + o.currentEnergy, 0),
+                    primary: alive.filter(o => o.type === 'primary').reduce((sum, o) => sum + o.currentEnergy, 0),
+                    secondary: alive.filter(o => o.type === 'secondary').reduce((sum, o) => sum + o.currentEnergy, 0)
+                };
+
+                const max = Math.max(...Object.values(levels), 1);
+                const container = document.getElementById('energyPyramid');
+                
+                container.innerHTML = `
+                    <div class="w-full flex flex-col items-center gap-1">
+                        <div class="h-8 bg-red-500/80 rounded-t-sm transition-all duration-500 flex items-center justify-center text-xs font-bold" 
+                             style="width: ${(levels.secondary/max)*80 + 20}%">
+                            ${levels.secondary > 0 ? Math.round(levels.secondary) : ''}
+                        </div>
+                        <div class="h-8 bg-yellow-500/80 transition-all duration-500 flex items-center justify-center text-xs font-bold" 
+                             style="width: ${(levels.primary/max)*80 + 40}%">
+                            ${levels.primary > 0 ? Math.round(levels.primary) : ''}
+                        </div>
+                        <div class="h-8 bg-green-500/80 rounded-b-sm transition-all duration-500 flex items-center justify-center text-xs font-bold" 
+                             style="width: ${(levels.producer/max)*80 + 60}%">
+                            ${levels.producer > 0 ? Math.round(levels.producer) : ''}
+                        </div>
+                    </div>
+                    <div class="flex justify-between w-full text-xs text-slate-400 mt-2 px-4">
+                        <span>生产者</span>
+                        <span>初级</span>
+                        <span>次级</span>
+                    </div>
+                `;
+            }
+
+            // 模拟控制
+            toggleSimulation() {
+                this.isSimulating = !this.isSimulating;
+                const btn = document.getElementById('simBtn');
+                const text = document.getElementById('simText');
+                
+                if (this.isSimulating) {
+                    btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+                    btn.classList.add('bg-red-600', 'hover:bg-red-500');
+                    text.textContent = '停止模拟';
+                    this.startSimulation();
+                } else {
+                    btn.classList.remove('bg-red-600', 'hover:bg-red-500');
+                    btn.classList.add('bg-green-600', 'hover:bg-green-500');
+                    text.textContent = '开始模拟';
+                    this.stopSimulation();
+                }
+            }
+
+            startSimulation() {
+                this.simulationInterval = setInterval(() => {
+                    this.simTime++;
+                    document.getElementById('simTime').textContent = this.simTime;
+                    
+                    this.organisms.forEach(org => {
+                        if (!org.alive) return;
+                        
+                        org.age++;
+                        
+                        // 能量消耗
+                        const consumption = org.type === 'producer' ? 0.5 : 2;
+                        org.currentEnergy -= consumption;
+                        
+                        // 生产者光合作用（有光照时）
+                        if (org.type === 'producer' && this.environment.light > 20) {
+                            org.currentEnergy += (this.environment.light / 100) * 3;
+                            org.currentEnergy = Math.min(org.energy * 1.5, org.currentEnergy);
+                        }
+                        
+                        // 温度影响
+                        if (this.environment.temp < 10 || this.environment.temp > 40) {
+                            org.currentEnergy -= 1; // 极端温度额外消耗
+                        }
+                        
+                        // 检查死亡
+                        if (org.currentEnergy <= 0) {
+                            org.alive = false;
+                            org.currentEnergy = 0;
+                            this.updateOrganismUI(org);
+                            this.createParticles(org.x + 30, org.y + 30, '💀');
+                        } else {
+                            // 随机移动
+                            if (org.type !== 'producer' && Math.random() < 0.3) {
+                                const dx = (Math.random() - 0.5) * 20;
+                                const dy = (Math.random() - 0.5) * 20;
+                                org.x = Math.max(0, Math.min(this.canvas.offsetWidth - 60, org.x + dx));
+                                org.y = Math.max(0, Math.min(this.canvas.offsetHeight - 60, org.y + dy));
+                                const el = document.getElementById(`org-${org.uid}`);
+                                if (el) {
+                                    el.style.left = org.x + 'px';
+                                    el.style.top = org.y + 'px';
+                                }
+                            }
+                            this.updateOrganismUI(org);
+                        }
+                    });
+                    
+                    // 自动捕食（简单AI）
+                    this.autoPredation();
+                    
+                    // 繁殖（能量充足时）
+                    this.reproduction();
+                    
+                    this.updateUI();
+                    this.analyzeFoodChain();
+                    this.updateEnergyPyramid();
+                    this.recordPopulation();
+                    
+                }, 1000);
+            }
+
+            stopSimulation() {
+                clearInterval(this.simulationInterval);
+            }
+
+            // 自动捕食AI
+            autoPredation() {
+                const predators = this.organisms.filter(o => o.alive && o.prey);
+                const preyList = this.organisms.filter(o => o.alive && o.type !== 'decomposer');
+                
+                predators.forEach(predator => {
+                    if (predator.currentEnergy < predator.energy * 0.5) { // 饿了才捕食
+                        const nearbyPrey = preyList.find(prey => {
+                            if (prey.uid === predator.uid) return false;
+                            if (!predator.prey.includes(prey.id)) return false;
+                            const dx = Math.abs(prey.x - predator.x);
+                            const dy = Math.abs(prey.y - predator.y);
+                            return dx < 80 && dy < 80;
+                        });
+                        
+                        if (nearbyPrey) {
+                            this.performPredation(predator, nearbyPrey);
+                        }
+                    }
+                });
+            }
+
+            // 繁殖
+            reproduction() {
+                const canReproduce = this.organisms.filter(o => 
+                    o.alive && o.currentEnergy > o.energy * 0.8 && Math.random() < 0.1
+                );
+                
+                canReproduce.forEach(parent => {
+                    if (this.organisms.filter(o => o.alive).length > 20) return; // 限制数量
+                    
+                    const offset = 60;
+                    const newX = Math.max(0, Math.min(this.canvas.offsetWidth - 60, parent.x + (Math.random() - 0.5) * offset * 2));
+                    const newY = Math.max(0, Math.min(this.canvas.offsetHeight - 60, parent.y + (Math.random() - 0.5) * offset * 2));
+                    
+                    this.addOrganism({
+                        ...parent,
+                        currentEnergy: parent.energy * 0.3
+                    }, newX + 30, newY + 30);
+                    
+                    parent.currentEnergy *= 0.7; // 繁殖消耗能量
+                    this.updateOrganismUI(parent);
+                });
+            }
+
+            // 更新生物UI
+            updateOrganismUI(org) {
+                const el = document.getElementById(`org-${org.uid}`);
+                if (!el) return;
+                
+                const energyBar = el.querySelector('.bg-green-500');
+                if (energyBar) {
+                    energyBar.style.width = (org.currentEnergy / org.energy * 100) + '%';
+                    energyBar.className = `h-full transition-all duration-500 ${
+                        org.currentEnergy < org.energy * 0.3 ? 'bg-red-500' : 
+                        org.currentEnergy < org.energy * 0.6 ? 'bg-yellow-500' : 'bg-green-500'
+                    }`;
+                }
+                
+                if (!org.alive) {
+                    el.classList.add('dead');
+                }
+            }
+
+            // 更新全局UI
+            updateUI() {
+                document.getElementById('organismCount').textContent = this.organisms.filter(o => o.alive).length;
+            }
+
+            // 检查空状态
+            checkEmptyState() {
+                const emptyState = document.getElementById('emptyState');
+                if (this.organisms.length > 0) {
+                    emptyState.style.display = 'none';
+                } else {
+                    emptyState.style.display = 'flex';
+                }
+            }
+
+            // 环境参数更新
+            updateEnvironment(type, value) {
+                this.environment[type] = parseInt(value);
+                const labels = {
+                    light: 'lightValue',
+                    temp: 'tempValue',
+                    water: 'waterValue'
+                };
+                const suffix = type === 'temp' ? '°C' : '%';
+                document.getElementById(labels[type]).textContent = value + suffix;
+            }
+
+            // 重置
+            resetEcosystem() {
+                this.stopSimulation();
+                this.isSimulating = false;
+                document.getElementById('simBtn').classList.remove('bg-red-600', 'hover:bg-red-500');
+                document.getElementById('simBtn').classList.add('bg-green-600', 'hover:bg-green-500');
+                document.getElementById('simText').textContent = '开始模拟';
+                
+                this.organisms = [];
+                this.simTime = 0;
+                this.populationHistory = [];
+                document.getElementById('simTime').textContent = '0';
+                document.getElementById('ecosystemCanvas').innerHTML = `
+                    <div class="absolute inset-0 flex items-center justify-center text-slate-500 pointer-events-none" id="emptyState">
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">🌍</div>
+                            <p>拖拽生物到此处构建食物链</p>
+                            <p class="text-sm mt-1">点击生物查看详情，拖拽生物进行捕食</p>
+                        </div>
+                    </div>
+                `;
+                this.updateUI();
+                this.analyzeFoodChain();
+                this.updateEnergyPyramid();
+                this.renderChart();
+            }
+
+            // 记录种群数据
+            recordPopulation() {
+                const alive = this.organisms.filter(o => o.alive);
+                this.populationHistory.push({
+                    time: this.simTime,
+                    producers: alive.filter(o => o.type === 'producer').length,
+                    primary: alive.filter(o => o.type === 'primary').length,
+                    secondary: alive.filter(o => o.type === 'secondary').length
+                });
+                
+                if (this.populationHistory.length > 50) {
+                    this.populationHistory.shift();
+                }
+                
+                this.renderChart();
+            }
+
+            // 渲染图表
+            renderChart() {
+                const canvas = document.getElementById('populationChart');
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                ctx.clearRect(0, 0, width, height);
+                
+                if (this.populationHistory.length < 2) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('开始模拟后显示数据', width/2, height/2);
+                    return;
+                }
+                
+                const maxPop = Math.max(...this.populationHistory.map(d => 
+                    Math.max(d.producers, d.primary, d.secondary)
+                ), 1);
+                
+                const drawLine = (data, color, key) => {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    
+                    data.forEach((point, i) => {
+                        const x = (i / (data.length - 1)) * width;
+                        const y = height - (point[key] / maxPop) * (height - 20) - 10;
+                        
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    });
+                    
+                    ctx.stroke();
+                };
+                
+                drawLine(this.populationHistory, '#22c55e', 'producers');
+                drawLine(this.populationHistory, '#eab308', 'primary');
+                drawLine(this.populationHistory, '#ef4444', 'secondary');
+            }
+
+            setupCanvasEvents() {
+                this.canvas.addEventListener('click', (e) => {
+                    if (e.target === this.canvas) {
+                        this.selectedOrganism = null;
+                        document.querySelectorAll('[id^="org-"]').forEach(el => 
+                            el.classList.remove('ring-4', 'ring-blue-500', 'rounded-full')
+                        );
+                        document.getElementById('organismDetail').innerHTML = `
+                            <div class="text-center text-slate-400 py-8">
+                                <div class="text-3xl mb-2">👆</div>
+                                <p>点击画布中的生物查看详情</p>
+                            </div>
+                        `;
+                    }
+                });
+            }
+        }
+
+        // 初始化应用
+        const app = new EcosystemApp();
+    </script>
+</body>
+</html>
